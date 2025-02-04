@@ -1,0 +1,54 @@
+/* Inter font for Latin characters */
+@font-face {
+    font-family: 'Inter';
+    src: url('/fonts/Inter-Regular.ttf') format('truetype');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Inter';
+    src: url('/fonts/Inter-Bold.ttf') format('truetype');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+
+/* Battambang font for Khmer characters */
+@font-face {
+    font-family: 'Battambang';
+    src: url('/fonts/Battambang-Regular.ttf') format('truetype');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Battambang';
+    src: url('/fonts/Battambang-Bold.ttf') format('truetype');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+
+/* Set the font family to use Inter for English and Battambang for Khmer characters */
+:root {
+    --fiui-font-family: var(--font-family), 'Battambang';
+}
+
+/* Ensure Khmer text uses Battambang */
+:root {
+    --font-family-sans: 'Inter', 'Battambang', system-ui, sans-serif;
+    --fiui-font-family: 'Inter', 'Battambang', system-ui, sans-serif;
+}
+
+/* Apply Battambang font only to Khmer text */
+:lang(km) {
+    font-family: 'Battambang', system-ui, sans-serif;
+}
+
+/* Keep default font for non-Khmer text */
+:not(:lang(km)) {
+    font-family: var(--fiui-font-family);
+} 
