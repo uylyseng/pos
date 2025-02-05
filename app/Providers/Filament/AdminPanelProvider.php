@@ -32,11 +32,12 @@ class AdminPanelProvider extends PanelProvider
             ->login()
             ->font(
                 'inter',
+                // 'battambang',
                 url: asset('css/fonts.css'),
                 provider: LocalFontProvider::class,
             )
-            ->brandName('សួស្តីកាហ្វេ និងភីហ្សា')
-            ->brandLogo(asset('images/logo.png'))
+            ->brandName('សួស្តីកាហ្វេ ភីហ្សានិងនំខេក')
+            // ->brandLogo(asset(''))
             ->colors([
                 'danger' => Color::Rose,
                 'gray' => Color::Gray,
