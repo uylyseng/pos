@@ -14,19 +14,12 @@ return new class extends Migration
         Schema::create('product_sizes', function (Blueprint $table) {
             $table->id();
             $table->foreignId('product_id')->constrained()->onDelete('cascade');
-            $table->foreignId('size_id')->nullable()->constrained()->nullOnDelete();  // Added nullable()
-            $table->decimal('price', 10, 2);
+            $table->foreignId('size_id')->nullable()->constrained()->nullOnDelete();
+            $table->decimal('multiplier', 8, 2)->default(1.0);
             $table->unique(['product_id', 'size_id'], 'unique_product_size');
             $table->timestamps();
-            $table->softDeletes();
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->foreignId('updated_by')->nullable()->constrained('users')->nullOnDelete();
-
-                // Add indexes for common queries
-            $table->index('product_id');                   // Product size lookup
-            $table->index('size_id');                      // Size filtering
-            $table->index(['deleted_at']);                 // Soft delete queries
-            $table->index(['product_id', 'deleted_at']);   // Active product sizes
         });
     }
 

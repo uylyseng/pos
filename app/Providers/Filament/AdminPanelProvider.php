@@ -19,7 +19,9 @@ use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 use BezhanSalleh\FilamentShield\FilamentShieldPlugin;
 use Filament\FontProviders\LocalFontProvider;
-
+use Rmsramos\Activitylog\ActivitylogPlugin;
+use Filament\Navigation\NavigationItem;
+use App\Filament\Pages\Dashboard;
 
 class AdminPanelProvider extends PanelProvider
 {
@@ -32,29 +34,28 @@ class AdminPanelProvider extends PanelProvider
             ->login()
             ->font(
                 'inter',
-                // 'battambang',
                 url: asset('css/fonts.css'),
                 provider: LocalFontProvider::class,
             )
             ->brandName('សួស្តីកាហ្វេ ភីហ្សានិងនំខេក')
-            // ->brandLogo(asset(''))
+//            ->brandLogo(asset('images/brand.jpg'))
             ->colors([
                 'danger' => Color::Rose,
                 'gray' => Color::Gray,
                 'info' => Color::Blue,
-                'primary' => Color::Amber,
+                'primary' => Color::Green,
                 'success' => Color::Emerald,
                 'warning' => Color::Orange,
             ])
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->pages([
-                Pages\Dashboard::class,
+                Dashboard::class,
             ])
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
             ->widgets([
-                Widgets\AccountWidget::class,
-                Widgets\FilamentInfoWidget::class,
+                // Widgets\AccountWidget::class,
+                // Widgets\FilamentInfoWidget::class,
             ])
             ->middleware([
                 EncryptCookies::class,
@@ -66,12 +67,27 @@ class AdminPanelProvider extends PanelProvider
                 SubstituteBindings::class,
                 DisableBladeIconComponents::class,
                 DispatchServingFilamentEvent::class,
-            ])       
+            ])
             ->authMiddleware([
                 Authenticate::class,
             ])
             ->plugins([
-                \BezhanSalleh\FilamentShield\FilamentShieldPlugin::make(),
+                FilamentShieldPlugin::make(),
+                ActivitylogPlugin::make()
+                    ->label('Activity Log')
+                    ->pluralLabel('Activity Logs')
+                    ->navigationIcon('heroicon-o-clipboard-document-list')
+                    ->navigationGroup('Activity Management')
+                    ->navigationSort(99)
+                    ->navigationItem(true)
+                    ->authorize(fn () => auth()->user()->can('view_any_activitylog')),
+            ])
+            ->navigationItems([
+                NavigationItem::make('POS')
+                    ->url('/pos', shouldOpenInNewTab: false)
+                    ->icon('heroicon-o-clipboard-document-list')
+                    ->visible(fn () => auth()->user()->can('access_pos'))
+                    ->sort(1),
             ]);
     }
 }

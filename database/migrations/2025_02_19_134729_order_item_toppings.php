@@ -15,18 +15,11 @@ return new class extends Migration
             $table->id();
             $table->foreignId('order_item_id')->constrained('order_items')->onDelete('cascade');
             $table->foreignId('product_topping_id')->constrained('product_toppings')->onDelete('cascade');
-            $table->decimal('price', 10, 2);  // Added price field
+            $table->decimal('price', 10, 2);
             $table->timestamps();
             $table->softDeletes();
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->foreignId('updated_by')->nullable()->constrained('users')->nullOnDelete();
-
-            // Add indexes for common queries
-            $table->index('order_item_id');
-            $table->index('product_topping_id');
-            $table->index(['created_at']);
-            $table->index(['deleted_at']);
-            $table->index(['order_item_id', 'deleted_at']);
         });
     }
 

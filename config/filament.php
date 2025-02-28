@@ -86,7 +86,25 @@ return [
 
     'livewire_loading_delay' => 'default',
 
-    
+    'pages' => [
+        \App\Filament\Pages\Dashboards\AdminDashboard::class,
+        \App\Filament\Pages\Dashboards\ManagerDashboard::class,
+        \App\Filament\Pages\Dashboards\CashierDashboard::class,
+    ],
+
+    /*
+     * Register the widgets that should be displayed on your dashboards
+     */
+    'widgets' => [
+        \App\Filament\Widgets\StatsOverview::class,
+        \App\Filament\Widgets\RevenueChart::class,
+        \App\Filament\Widgets\LatestOrders::class,
+        \App\Filament\Widgets\InventoryStatus::class,
+        \App\Filament\Widgets\TodaysSales::class,
+        \App\Filament\Widgets\QuickActions::class,
+        \Filament\Widgets\AccountWidget::class,
+        \Filament\Widgets\FilamentInfoWidget::class,
+    ],
 
     'locale' => 'km',
 

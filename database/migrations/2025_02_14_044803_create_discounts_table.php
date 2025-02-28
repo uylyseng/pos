@@ -19,22 +19,13 @@ return new class extends Migration
             $table->enum('type', ['percentage', 'fixed']);
             $table->decimal('amount', 10, 2);
             $table->decimal('min_purchase', 10, 2)->nullable();
-            $table->decimal('max_discount', 10, 2)->nullable();  // Added max_discount field
+            $table->decimal('max_discount', 10, 2)->nullable();
             $table->boolean('is_active')->default(true);
             $table->timestamps();
             $table->softDeletes();
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->foreignId('updated_by')->nullable()->constrained('users')->nullOnDelete();
-    
-            // Add indexes for common queries
-            $table->index('name_km');
-            $table->index('name_en');
-            $table->index('is_active');
-            $table->index(['type', 'is_active']);
-            $table->index(['min_purchase', 'is_active']);
-            $table->index(['max_discount', 'is_active']);    // Added index for max_discount
-            $table->index(['created_at', 'is_active']);
-            $table->index(['deleted_at', 'is_active']);
+
         });
     }
 

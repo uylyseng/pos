@@ -51,4 +51,4 @@
 /* Keep default font for non-Khmer text */
 :not(:lang(km)) {
     font-family: var(--fiui-font-family);
-} 
+}

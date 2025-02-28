@@ -25,14 +25,6 @@ return new class extends Migration
             $table->softDeletes();
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->foreignId('updated_by')->nullable()->constrained('users')->nullOnDelete();
-
-
-            // Add indexes for common queries
-            $table->index('user_id');                    // Filter by user
-            $table->index('table_number');               // Search by table
-            $table->index('created_at');                 // Date range queries
-            $table->index(['user_id', 'created_at']);    // User order history
-            $table->index(['deleted_at']);               // Soft delete queries
         });
     }
 
