@@ -1,0 +1,777 @@
+function posApp() {
+    return {
+        // Existing properties
+        cart: [],
+        selectedCategory: null,
+        products: [],
+        isLoading: true,
+        mobileTab: 'products',
+        searchTerm: '',
+        allProducts: [],
+        searchTimeout: null,
+        currentFetch: null,
+        searchFetch: null,
+
+        // Customization properties
+        showCustomizationModal: false,
+        selectedProduct: null,
+        productSizes: [],
+        productToppings: [],
+        selectedSizeIndex: 0,
+        selectedToppings: [],
+        customQuantity: 1,
+        specialInstructions: '',
+
+        // Add checkout-specific properties
+        showCheckoutModal: false,
+        orderCompleted: false,
+        paymentMethod: 'cash',
+        cashAmount: 0,
+        cashAmountRiel: 0,
+        exchangeRate: 4100,
+        discount: null,
+        discountAmount: 0,
+
+        // Add this at the beginning of the posApp object:
+        isProcessingOrder: false,
+
+        init() {
+
+            this.cart = [];
+
+            // Load existing cart with stronger validation
+            try {
+                const savedCart = localStorage.getItem('pos_cart');
+                if (savedCart && savedCart !== 'undefined' && savedCart !== 'null') {
+                    const parsed = JSON.parse(savedCart);
+                    // Only assign if it's a valid array
+                    if (Array.isArray(parsed)) {
+                        this.cart = parsed;
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading cart from localStorage:', error);
+                // Reset to empty array, don't leave it undefined
+                this.cart = [];
+                localStorage.removeItem('pos_cart');
+            }
+
+            // Watch changes and update localStorage
+            this.$watch('cart', value => {
+                if (value && Array.isArray(value)) {
+                    try {
+                        localStorage.setItem('pos_cart', JSON.stringify(value));
+                    } catch (error) {
+                        console.error('Error saving cart to localStorage:', error);
+                    }
+                }
+            });
+
+            this.loadProducts();
+
+            // Set appropriate tab based on screen size
+            if (window.innerWidth < 768 && this.cart.length > 0) {
+                this.mobileTab = 'cart';
+            }
+        },
+
+        getImageUrl(imagePath) {
+            if (!imagePath) return '/storage/products/default.jpg';
+
+            // Handle potential double paths like 'public/public/...'
+            return '/storage/' + imagePath.replace(/^public\//, '').replace(/^\//, '');
+        },
+
+        setCategory(categoryId) {
+            this.selectedCategory = categoryId;
+            this.searchTerm = ''; // Reset search when changing category
+            this.loadProducts();
+        },
+
+        loadProducts() {
+            // Show loading indicator immediately
+            this.isLoading = true;
+
+            // Cancel any existing fetch operation
+            if (this.currentFetch && typeof this.currentFetch.abort === 'function') {
+                this.currentFetch.abort();
+            }
+
+            // Create an AbortController to allow canceling this request if needed
+            const controller = new AbortController();
+            this.currentFetch = controller;
+
+            // Prevent cache issues with a timestamp
+            const timestamp = Date.now();
+            const url = `/pos/products?category_id=${this.selectedCategory || ''}&_=${timestamp}`;
+
+            fetch(url, {
+                signal: controller.signal,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                }
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('Network response was not ok');
+                return response.json();
+            })
+            .then(data => {
+                this.products = data || [];
+
+                // Store all products if it's the initial load or "All" category
+                if (this.selectedCategory === null) {
+                    this.allProducts = [...(data || [])];
+                }
+
+                this.isLoading = false;
+            })
+            .catch(error => {
+                if (error.name === 'AbortError') {
+                    // Request was aborted, ignore error
+                    return;
+                }
+
+                console.error('Error loading products:', error);
+                this.isLoading = false;
+
+                // Only show alert for non-abort errors
+                if (error.name !== 'AbortError') {
+                    alert('Failed to load products. Please try again.');
+                }
+            })
+            .finally(() => {
+                // Ensure loading state is cleared even if there's an error
+                if (controller === this.currentFetch) {
+                    this.isLoading = false;
+                }
+            });
+        },
+
+        searchProducts() {
+            // Clear any existing timeout
+            clearTimeout(this.searchTimeout);
+
+            // Set a longer debounce for search (500ms is more appropriate)
+            this.searchTimeout = setTimeout(() => {
+                // If search term is empty, just load the current category
+                if (!this.searchTerm.trim()) {
+                    this.loadProducts();
+                    return;
+                }
+
+                this.isLoading = true;
+
+                // Check if we can do a client-side search first (for better performance)
+                if (this.allProducts && this.allProducts.length > 0 && this.allProducts.length < 200) {
+                    // For small catalogs, client-side filtering is faster
+                    const term = this.searchTerm.toLowerCase();
+                    this.products = this.allProducts.filter(product =>
+                        product.name_km.toLowerCase().includes(term) ||
+                        product.name_en.toLowerCase().includes(term)
+                    );
+                    this.isLoading = false;
+                } else {
+                    // For larger catalogs, use server-side search
+                    const controller = new AbortController();
+                    if (this.searchFetch && typeof this.searchFetch.abort === 'function') {
+                        this.searchFetch.abort();
+                    }
+                    this.searchFetch = controller;
+
+                    fetch(`/pos/products/search?term=${encodeURIComponent(this.searchTerm)}&category_id=${this.selectedCategory || ''}&_=${Date.now()}`, {
+                        signal: controller.signal
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        this.products = data;
+                        this.isLoading = false;
+                    })
+                    .catch(error => {
+                        if (error.name === 'AbortError') return;
+
+                        console.error('Search error:', error);
+                        this.isLoading = false;
+
+                        // Fallback to client-side filtering as last resort
+                        const term = this.searchTerm.toLowerCase();
+                        this.products = this.allProducts.filter(product =>
+                            product.name_km.toLowerCase().includes(term) ||
+                            product.name_en.toLowerCase().includes(term)
+                        );
+                    });
+                }
+            }, 500);
+        },
+
+        openProductCustomization(product) {
+            if (!product) {
+                console.error('Attempted to open customization for undefined product');
+                return;
+            }
+
+            // Reset customization state
+            this.selectedProduct = product;
+            this.customQuantity = 1;
+            this.specialInstructions = '';
+            this.selectedSizeIndex = 0;
+            this.selectedToppings = [];
+            this.productSizes = [];
+            this.productToppings = [];
+
+            // Show the modal immediately for better UX
+            this.showCustomizationModal = true;
+
+            // Load product options in parallel
+            const promises = [];
+
+            // Fetch sizes if product has sizes
+            if (product.has_sizes) {
+                promises.push(
+                    this.fetchProductSizes(product.id).catch(error => {
+                        console.error('Error fetching sizes:', error);
+                        return []; // Return empty array on error
+                    })
+                );
+            }
+
+            // Fetch toppings if product has toppings
+            if (product.has_toppings) {
+                promises.push(
+                    this.fetchProductToppings(product.id).catch(error => {
+                        console.error('Error fetching toppings:', error);
+                        return []; // Return empty array on error
+                    })
+                );
+            }
+
+            // Wait for all promises with error handling
+            Promise.all(promises).catch(error => {
+                console.error('Error loading product options:', error);
+                alert('Failed to load product options. Please try again.');
+                this.showCustomizationModal = false;
+            });
+        },
+
+        fetchProductSizes(productId) {
+            if (!productId) {
+                console.error('No product ID provided for size fetch');
+                return Promise.resolve([]);
+            }
+
+            return fetch(`/pos/product-sizes/${productId}?_=${Date.now()}`)
+                .then(response => {
+                    if (!response.ok) throw new Error(`Failed to load sizes. Status: ${response.status}`);
+                    return response.json();
+                })
+                .then(data => {
+                    // Handle potential null response
+                    if (!data) {
+                        console.warn('No sizes returned from server');
+                        this.productSizes = [];
+                        return [];
+                    }
+
+                    this.productSizes = Array.isArray(data) ? data : [];
+
+                    // Initialize selected size to the first one if available
+                    if (this.productSizes.length > 0) {
+                        this.selectedSizeIndex = 0;
+                    }
+
+                    return data;
+                })
+                .catch(error => {
+                    console.error('Error in fetchProductSizes:', error);
+                    this.productSizes = [];
+                    throw error;
+                });
+        },
+
+        fetchProductToppings(productId) {
+            return fetch(`/pos/product-toppings/${productId}?_=${Date.now()}`)
+                .then(response => response.json())
+                .then(data => {
+                    this.productToppings = data || [];
+                    // Initialize selectedToppings with correct length
+                    this.selectedToppings = Array(this.productToppings.length).fill(false);
+                    return data;
+                })
+                .catch(error => {
+                    console.error('Error loading toppings:', error);
+                    this.productToppings = [];
+                    this.selectedToppings = [];
+                    throw error;
+                });
+        },
+
+        removeFromCart(index, event) {
+            // Prevent event bubbling
+            if (event) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+
+            try {
+                // Safety guard
+                if (!Array.isArray(this.cart)) {
+                    console.warn('Cart is not an array when removing item');
+                    this.cart = [];
+                    return;
+                }
+
+                // Create a new array without the removed item for proper reactivity
+                const updatedCart = [...this.cart].filter((_, i) => i !== index);
+
+                // Update cart with new array - this creates a new reference for Alpine's reactivity
+                this.cart = updatedCart;
+
+                // Store in localStorage
+                localStorage.setItem('pos_cart', JSON.stringify(updatedCart));
+            } catch (error) {
+                console.error('Error removing item from cart:', error);
+                this.cart = [];
+            }
+        },
+
+        increaseQuantity(index) {
+            if (!Array.isArray(this.cart) || index < 0 || index >= this.cart.length) {
+                console.error('Invalid cart or index when increasing quantity');
+                return;
+            }
+
+            try {
+                // Create a completely new cart array for proper reactivity
+                const newCart = this.cart.map((item, i) => {
+                    if (i === index) {
+                        // Create a deep copy of the item to modify
+                        const updatedItem = JSON.parse(JSON.stringify(item));
+                        // Ensure quantity is a number and increment it
+                        updatedItem.quantity = (parseInt(updatedItem.quantity) || 1) + 1;
+                        return updatedItem;
+                    }
+                    return item;
+                });
+
+                // Replace the entire cart with the new one
+                this.cart = newCart;
+
+                // Update localStorage immediately
+                localStorage.setItem('pos_cart', JSON.stringify(this.cart));
+            } catch (error) {
+                console.error('Error increasing quantity:', error);
+            }
+        },
+
+        decreaseQuantity(index) {
+            if (!Array.isArray(this.cart) || index < 0 || index >= this.cart.length) {
+                console.error('Invalid cart or index when decreasing quantity');
+                return;
+            }
+
+            try {
+                const currentQuantity = parseInt(this.cart[index].quantity) || 1;
+
+                if (currentQuantity <= 1) {
+                    // Remove the item if quantity would be less than 1
+                    this.removeFromCart(index);
+                    return;
+                }
+
+                // Create a completely new cart array for proper reactivity
+                const newCart = this.cart.map((item, i) => {
+                    if (i === index) {
+                        // Create a deep copy of the item to modify
+                        const updatedItem = JSON.parse(JSON.stringify(item));
+                        // Decrease quantity
+                        updatedItem.quantity = currentQuantity - 1;
+                        return updatedItem;
+                    }
+                    return item;
+                });
+
+                // Replace the entire cart with the new one
+                this.cart = newCart;
+
+                // Update localStorage immediately
+                localStorage.setItem('pos_cart', JSON.stringify(this.cart));
+            } catch (error) {
+                console.error('Error decreasing quantity:', error);
+            }
+        },
+
+        selectSize(index) {
+            if (index >= 0 && index < this.productSizes.length) {
+                this.selectedSizeIndex = index;
+            }
+        },
+
+        toggleTopping(index) {
+            // Initialize the array if it doesn't exist or isn't an array
+            if (!this.selectedToppings || !Array.isArray(this.selectedToppings)) {
+                this.selectedToppings = Array(this.productToppings.length).fill(false);
+            }
+
+            // If the array length doesn't match the toppings, recreate it
+            if (this.selectedToppings.length !== this.productToppings.length) {
+                this.selectedToppings = Array(this.productToppings.length).fill(false);
+            }
+
+            // Safety check
+            if (index >= 0 && index < this.selectedToppings.length) {
+                // Create a new array to ensure reactivity
+                const newToppings = [...this.selectedToppings];
+                newToppings[index] = !newToppings[index];
+                this.selectedToppings = newToppings;
+            }
+        },
+
+        // Update the "getBasePrice" function to use calculated price or base price
+        getBasePrice() {
+            if (!this.selectedProduct) return 0;
+
+            // If product has sizes and a size is selected
+            if (this.selectedProduct.has_sizes &&
+                this.productSizes.length > 0 &&
+                this.selectedSizeIndex >= 0 &&
+                this.selectedSizeIndex < this.productSizes.length) {
+
+                const selectedSize = this.productSizes[this.selectedSizeIndex];
+
+                // Use the price directly from the size if available, otherwise calculate it
+                if (selectedSize.price) {
+                    return parseFloat(selectedSize.price);
+                } else if (selectedSize.multiplier) {
+                    // Apply multiplier to base price if no direct price is available
+                    return parseFloat(this.selectedProduct.base_price) * parseFloat(selectedSize.multiplier);
+                }
+            }
+
+            // Default: return the product's base price
+            return parseFloat(this.selectedProduct.base_price);
+        },
+
+        get selectedToppingsCost() {
+            let cost = 0;
+            if (this.selectedToppings && this.productToppings && Array.isArray(this.selectedToppings)) {
+                this.selectedToppings.forEach((selected, index) => {
+                    if (selected && this.productToppings[index]) {
+                        cost += parseFloat(this.productToppings[index].price || 0);
+                    }
+                });
+            }
+            return cost;
+        },
+
+        computeCurrentPrice() {
+            // Get base price with size adjustment
+            const basePrice = this.getBasePrice();
+
+            // Add toppings cost
+            const totalPrice = basePrice + this.selectedToppingsCost;
+
+            // Return formatted price
+            return totalPrice.toFixed(2);
+        },
+
+        addCustomizedProductToCart() {
+            if (!this.selectedProduct) return;
+
+            try {
+                // Haptic feedback for mobile devices
+                if (window.navigator && window.navigator.vibrate) {
+                    window.navigator.vibrate(50);
+                }
+
+                let selectedSize = null;
+                if (this.selectedProduct.has_sizes && this.productSizes.length > 0 &&
+                    this.selectedSizeIndex >= 0 && this.selectedSizeIndex < this.productSizes.length) {
+                    selectedSize = this.productSizes[this.selectedSizeIndex];
+                }
+
+                const selectedToppingsList = this.productToppings.filter((topping, index) =>
+                    Array.isArray(this.selectedToppings) &&
+                    index < this.selectedToppings.length &&
+                    this.selectedToppings[index]
+                );
+
+                // Create item object with all necessary data
+                const item = {
+                    id: this.selectedProduct.id,
+                    name_km: this.selectedProduct.name_km,
+                    name_en: this.selectedProduct.name_en,
+                    price: parseFloat(this.computeCurrentPrice()),
+                    quantity: this.customQuantity,
+                    image: this.selectedProduct.image,
+                    size: selectedSize ? {
+                        id: selectedSize.size_id,
+                        name_km: selectedSize.size_name_km,
+                        name_en: selectedSize.size_name_en,
+                        price: parseFloat(selectedSize.price)
+                    } : null,
+                    toppings: selectedToppingsList.map(topping => ({
+                        id: topping.topping_id,
+                        name_km: topping.topping_name_km,
+                        name_en: topping.topping_name_en,
+                        price: parseFloat(topping.price)
+                    })),
+                    special_instructions: (this.specialInstructions || '').trim(),
+                    added_at: new Date().toISOString() // For sorting by time added
+                };
+
+                // Add to cart with immutable update pattern
+                this.cart = [...this.cart, item];
+
+                // Ensure localStorage is updated
+                localStorage.setItem('pos_cart', JSON.stringify(this.cart));
+
+                // Close modal
+                this.showCustomizationModal = false;
+
+                // On mobile, show cart after adding item
+                if (window.innerWidth < 768) {
+                    this.mobileTab = 'cart';
+                }
+            } catch (error) {
+                console.error('Error adding item to cart:', error);
+                alert('Failed to add item to cart. Please try again.');
+            }
+        },
+
+        get subtotal() {
+            // Ensure cart is an array
+            const cart = Array.isArray(this.cart) ? this.cart : [];
+
+            if (cart.length === 0) {
+                return 0;
+            }
+
+            return cart.reduce((sum, item) => {
+                // Guard against malformed cart items
+                if (!item) return sum;
+
+                const price = parseFloat(item.price) || 0;
+                const quantity = parseInt(item.quantity) || 1;
+                return sum + (price * quantity);
+            }, 0);
+        },
+
+        get total() {
+            return this.subtotal - this.discountAmount;
+        },
+
+        // Convert Riel to USD
+        get cashAmountRielInUSD() {
+            return this.cashAmountRiel / this.exchangeRate;
+        },
+
+        // Calculate change in USD
+        get changeUSD() {
+            const totalReceived = parseFloat(this.cashAmount) + this.cashAmountRielInUSD;
+            const change = totalReceived - this.total;
+            return change > 0 ? change : 0;
+        },
+
+        // Calculate change in KHR
+        get changeKHR() {
+            return this.changeUSD * this.exchangeRate;
+        },
+
+        get canCompleteOrder() {
+            if (this.cart.length === 0) return false;
+
+            if (this.paymentMethod === 'cash') {
+                const totalReceived = parseFloat(this.cashAmount) + this.cashAmountRielInUSD;
+                return totalReceived >= this.total;
+            }
+            return this.paymentMethod !== '';
+        },
+
+        async loadExchangeRate() {
+            try {
+                const response = await fetch('/api/exchange-rates/current');
+                const data = await response.json();
+                if (data.rate) {
+                    this.exchangeRate = parseFloat(data.rate);
+                }
+            } catch (error) {
+                console.error('Error loading exchange rate:', error);
+            }
+        },
+
+        async loadDiscount() {
+            try {
+                const response = await fetch('/api/discounts/applicable?amount=' + this.subtotal);
+                const data = await response.json();
+                if (data.discount) {
+                    this.discount = data.discount;
+                    this.calculateDiscountAmount();
+                }
+            } catch (error) {
+                console.error('Error loading discount:', error);
+            }
+        },
+
+        calculateDiscountAmount() {
+            if (!this.discount) {
+                this.discountAmount = 0;
+                return;
+            }
+
+            if (this.discount.type === 'percentage') {
+                this.discountAmount = Math.min(
+                    (this.subtotal * this.discount.amount) / 100,
+                    this.discount.max_discount || Infinity
+                );
+            } else {
+                this.discountAmount = Math.min(
+                    this.discount.amount,
+                    this.subtotal
+                );
+            }
+        },
+
+        setCashAmount(amount) {
+            this.cashAmount = amount;
+            this.cashAmountRiel = 0;
+        },
+
+        setCashAmountRiel(amount) {
+            this.cashAmountRiel = amount;
+            this.cashAmount = 0;
+        },
+
+        proceedToCheckout() {
+            if (this.cart.length === 0) return;
+
+            this.loadExchangeRate();
+            this.loadDiscount();
+            this.cashAmount = Math.ceil(this.total);
+            this.cashAmountRiel = 0;
+            this.showCheckoutModal = true;
+        },
+
+        async completeOrder() {
+            // Prevent multiple submissions
+            if (this.isProcessingOrder) {
+                console.log('Order already being processed');
+                return;
+            }
+
+            // Validate cart is not empty
+            if (!this.cart || this.cart.length === 0) {
+                alert('Cannot complete order with empty cart');
+                return;
+            }
+
+            // Additional validation to prevent $0.00 orders
+            if (this.total <= 0) {
+                alert('Order total must be greater than $0.00');
+                return;
+            }
+
+            this.isProcessingOrder = true;
+
+            try {
+                // Existing code with the changes from above...
+
+                // Set a loading indicator (optional)
+                const orderBtn = document.getElementById('complete-order-btn');
+                if (orderBtn) {
+                    orderBtn.innerText = 'Processing...';
+                    orderBtn.disabled = true;
+                }
+
+                // Format order data with proper validation and structure
+                const orderData = {
+                    items: this.cart.map(item => {
+                        // Properly format toppings to match database schema requirements
+                        const toppings = Array.isArray(item.toppings)
+                            ? item.toppings.map(topping => ({
+                                product_topping_id: parseInt(topping.id), // Ensure this is a number
+                                price: parseFloat(topping.price || 0)
+                            }))
+                            : [];
+
+                        return {
+                            product_id: parseInt(item.id),
+                            product_size_id: item.size?.id ? parseInt(item.size.id) : null,
+                            quantity: parseInt(item.quantity || 1),
+                            unit_price: parseFloat(item.price || 0),
+                            price: parseFloat(item.price || 0),
+                            toppings: toppings,
+                            special_instructions: item.special_instructions || ''
+                        };
+                    }),
+                    payment: {
+                        method: this.paymentMethod,
+                        amount_usd: this.paymentMethod === 'cash'
+                            ? parseFloat(this.cashAmount || 0)
+                            : parseFloat(this.total),
+                        amount_khr: this.paymentMethod === 'cash'
+                            ? parseFloat(this.cashAmountRiel || 0)
+                            : 0,
+                        exchange_rate: parseFloat(this.exchangeRate || 4100)
+                    },
+                    discount_id: this.discount?.id ? parseInt(this.discount.id) : null,
+                    subtotal: parseFloat(this.subtotal || 0),
+                    discount_amount: parseFloat(this.discountAmount || 0),
+                    total: parseFloat(this.total || 0)
+                };
+
+                console.log('Sending order data:', JSON.stringify(orderData));
+
+                // Send the request
+                const response = await fetch('/api/orders', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify(orderData)
+                });
+
+                // Handle non-JSON responses
+                const contentType = response.headers.get("content-type");
+                let result;
+                if (contentType && contentType.indexOf("application/json") !== -1) {
+                    result = await response.json();
+                } else {
+                    const text = await response.text();
+                    console.error('Non-JSON response:', text);
+                    result = { message: 'Server returned a non-JSON response' };
+                }
+
+                if (!response.ok) {
+                    throw new Error(result.message || 'Failed to create order');
+                }
+
+                this.orderCompleted = true;
+                this.showCheckoutModal = false;
+                localStorage.removeItem('pos_cart');
+            } catch (error) {
+                console.error('Error creating order:', error);
+                alert('Failed to process order: ' + error.message);
+            } finally {
+                // Always reset the processing flag, regardless of outcome
+                this.isProcessingOrder = false;
+
+                // Reset button if it exists
+                const orderBtn = document.getElementById('complete-order-btn');
+                if (orderBtn) {
+                    orderBtn.innerText = 'Complete Order';
+                    orderBtn.disabled = false;
+                }
+            }
+        },
+
+        printReceipt() {
+            //
+        },
+
+        resetApp() {
+            //
+        }
+    };
+}
